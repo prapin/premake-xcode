@@ -51,6 +51,7 @@
 
 		local res;
 
+		
 		if project and project.xcodebuildresources then
 			if type(project.xcodebuildresources) == "table" then
 				res = project.xcodebuildresources
@@ -126,7 +127,10 @@
 			[".bmp"]       = "image.bmp",
 			[".wav"]       = "audio.wav",
 			[".xcassets"]  = "folder.assetcatalog",
+			[".appex"]     = "wrapper.app-extension",
+			[".app"]       = "wrapper.application",
 
+			
 		}
 		return types[path.getextension(node.path)] or "text"
 	end
@@ -144,7 +148,7 @@
 		if kind == "project" then
 			referenceName = cfg.xcodeconfigreferenceproject
 		elseif kind == "target" then
-			referenceName = cfg.xcodeconfigreferencetarget
+		            referenceName =  cfg.xcodeconfigreferencetarget        
 		end
 		tree.traverse(tr, {
 			onleaf = function(node)
@@ -152,7 +156,7 @@
 				if node.id and path.getextension(filename) == ".xcconfig" then
 					if filename == referenceName then
 						_p(offset, 'baseConfigurationReference = %s /* %s */;', node.id, filename)
-						return
+                            return	        
 					end
 				end
 			end
@@ -248,6 +252,8 @@
 			WindowedApp = "com.apple.product-type.application",
 			StaticLib   = "com.apple.product-type.library.static",
 			SharedLib   = "com.apple.product-type.library.dynamic",
+			WatchApp	= "com.apple.product-type.application.watchapp",
+			WatchExt    = "com.apple.product-type.watchkit-extension",
 		}
 		return types[node.cfg.kind]
 	end
@@ -268,6 +274,8 @@
 			WindowedApp = "wrapper.application",
 			StaticLib   = "archive.ar",
 			SharedLib   = "\"compiled.mach-o.dylib\"",
+			WatchApp    = "wrapper.application",
+			WatchExt    = "wrapper.app-extension",
 		}
 		return types[node.cfg.kind]
 	end
@@ -418,6 +426,7 @@
 
 
 	function xcode.PBXFileReference(tr)
+		
 		local cfg = project.getfirstconfig(tr.project)
 		local settings = {}
 
@@ -487,12 +496,14 @@
 						src = "<group>"
 
 						if node.abspath then
+						
 							pth = path.getrelative(tr.project.location, node.abspath)
 						else
 							pth = node.path
 						end
 						--end
 						end
+					
 						_p(level,'%s /* %s */ = {isa = PBXFileReference; lastKnownFileType = %s; name = %s; path = %s; sourceTree = %s; };',
 							node.id, node.name, xcode.getfiletype(node, cfg), stringifySetting(node.name), stringifySetting(pth), stringifySetting(src))
 					end
@@ -594,7 +605,7 @@
 			printSettingsTable(2, settings)
 			_p('/* End PBXGroup section */')
 			_p('')
-		end
+	end	
 	end
 
 
@@ -674,6 +685,7 @@
 		_p(3,'isa = PBXProject;')
 		_p(3,'buildConfigurationList = 1DEB928908733DD80010E9CD /* Build configuration list for PBXProject "%s" */;', tr.name)
 		_p(3,'compatibilityVersion = "Xcode 3.2";')
+		_p(3,'attributes = { LastUpgradeCheck = 0630;	};') -- Tells just Xcode 6.3 already validated
 		_p(3,'hasScannedForEncodings = 1;')
 		_p(3,'mainGroup = %s /* %s */;', tr.id, tr.name)
 		_p(3,'projectDirPath = "";')
@@ -877,12 +889,19 @@
 		end
 	end
 
+		
 
+	
+		
+		
 	function xcode.XCBuildConfiguration_Target(tr, target, cfg)
+		
 		local settings = {}
 
 		settings['ALWAYS_SEARCH_USER_PATHS'] = 'NO'
 
+			
+		
 		if not cfg.flags.Symbols then
 			settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
 		end
@@ -935,12 +954,13 @@
 						--	table.insert(fileNameList, escapeArg(node.name))
 						--end
 					end
-				end
+			end	
 			})
 
 		if not table.isempty(fileNameList) then
 			settings['EXCLUDED_SOURCE_FILE_NAMES'] = fileNameList
 		end
+		
 		settings['PRODUCT_NAME'] = cfg.buildtarget.basename
 
 		--ms not by default ...add it manually if you need it
@@ -961,6 +981,8 @@
 	function xcode.XCBuildConfiguration_Project(tr, cfg)
 		local settings = {}
 
+		
+				
 		local archs = {
 			Native = "$(NATIVE_ARCH_ACTUAL)",
 			x86    = "i386",
@@ -970,6 +992,7 @@
 			Universal = "$(ARCHS_STANDARD_32_64_BIT)",
 		}
 
+		
 		settings['ARCHS'] = archs[cfg.platform or "Native"]
 
 		--ms This is the default so don;t write it
@@ -980,6 +1003,7 @@
 			settings['CONFIGURATION_BUILD_DIR'] = '$(SYMROOT)'
 		end
 
+		
 		settings['CONFIGURATION_TEMP_DIR'] = '$(OBJROOT)'
 
 		if cfg.flags.Symbols then
@@ -1005,11 +1029,21 @@
 		end
 
 		local optimizeMap = { On = 3, Size = 's', Speed = 3, Full = 'fast', Debug = 1 }
+			
 		settings['GCC_OPTIMIZATION_LEVEL'] = optimizeMap[cfg.optimize] or 0
 
 		if cfg.pchheader and not cfg.flags.NoPCH then
+			local pch = cfg.pchheader
+			for _, incdir in ipairs(cfg.includedirs) do
+				local testname = path.join(incdir, pch)
+				if os.isfile(testname) then
+					pch = project.getrelative(cfg.project, testname)
+					break
+				end
+			end
+
 			settings['GCC_PRECOMPILE_PREFIX_HEADER'] = 'YES'
-			settings['GCC_PREFIX_HEADER'] = cfg.pchheader
+			settings['GCC_PREFIX_HEADER'] = pch
 		end
 
 		settings['GCC_PREPROCESSOR_DEFINITIONS'] = cfg.defines
@@ -1032,6 +1066,7 @@
 		for i,v in ipairs(cfg.libdirs) do
 			cfg.libdirs[i] = premake.project.getrelative(cfg.project, cfg.libdirs[i])
 		end
+		
 		settings['LIBRARY_SEARCH_PATHS'] = cfg.libdirs
 
 		local objDir = path.getrelative(tr.project.location, cfg.objdir)
@@ -1084,6 +1119,7 @@
 
 		settings['OTHER_LDFLAGS'] = table.join(flags, cfg.linkoptions)
 
+		
 		if cfg.flags.StaticRuntime then
 			settings['STANDARD_C_PLUS_PLUS_LIBRARY_TYPE'] = 'static'
 		end
@@ -1102,6 +1138,7 @@
 		_p(3,'isa = XCBuildConfiguration;')
 		_p(3,'buildSettings = {')
 		printSettingsTable(4, settings)
+					
 		_p(3,'};')
 		printSetting(3, 'name', cfg.buildcfg);
 		_p(2,'};')
