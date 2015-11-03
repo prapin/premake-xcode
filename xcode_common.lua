@@ -322,6 +322,7 @@
 
 	function xcode.newid(...)
 		local name = ''
+		local arg = {...}
 		for i, v in pairs(arg) do
 			name = name..v..'****'
 		end
